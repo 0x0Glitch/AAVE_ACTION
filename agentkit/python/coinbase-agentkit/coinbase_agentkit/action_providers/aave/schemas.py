@@ -89,6 +89,18 @@ class AaveRepaySchema(BaseModel):
     )
 
 
+class AaveSetAsCollateralSchema(BaseModel):
+    """Schema for setting an asset as collateral in Aave."""
+
+    asset_id: str = Field(
+        description="The asset ID to set as collateral, one of `weth`, `usdc`, `cbeth`, or `wsteth`",
+    )
+    use_as_collateral: bool = Field(
+        default=True,
+        description="Whether to use the asset as collateral (True) or not (False)",
+    )
+
+
 class AavePortfolioSchema(BaseModel):
     """Input schema for getting portfolio details from Aave."""
 

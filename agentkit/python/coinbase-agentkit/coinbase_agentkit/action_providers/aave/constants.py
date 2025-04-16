@@ -20,9 +20,15 @@ POOL_ADDRESSES = {
     "base-sepolia": "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951",
 }
 
+# Pool Addresses Provider - used to get addresses of other Aave contracts
+POOL_ADDRESSES_PROVIDER = {
+    "base-mainnet": "0xe20fCBdBfFC4Dd138cE8b2E6FBb6CB49777ad64D",
+    "base-sepolia": "0x6Ae43d3271ff6888e7Fc43Fd7321a503ff738951",
+}
+
 # Addresses for UI Pool Data Provider - used for getting portfolio information
 UI_POOL_DATA_PROVIDER_ADDRESSES = {
-    "base-mainnet": "0x68100bD5345eA474D93577127C11F39FF8463e93",
+    "base-mainnet": "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
     "base-sepolia": "0xF8AEBE0f34E563E56C6F5f3bF44D31f2576a2Dfa", #not sure about this
 }
 
@@ -94,6 +100,17 @@ POOL_ABI = [
         ],
         "stateMutability": "view",
         "type": "function"
+    },
+    # setUserUseReserveAsCollateral function
+    {
+        "inputs": [
+            {"internalType": "address", "name": "asset", "type": "address"},
+            {"internalType": "bool", "name": "useAsCollateral", "type": "bool"}
+        ],
+        "name": "setUserUseReserveAsCollateral",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
     }
 ]
 
@@ -124,6 +141,63 @@ UI_POOL_DATA_PROVIDER_ABI = [
         ],
         "stateMutability": "view",
         "type": "function"
+    },
+    {
+        "inputs": [
+            {"internalType": "contract IPoolAddressesProvider", "name": "provider", "type": "address"}
+        ],
+        "name": "getReservesData",
+        "outputs": [
+            {
+                "components": [
+                    {"internalType": "address", "name": "underlyingAsset", "type": "address"},
+                    {"internalType": "string", "name": "name", "type": "string"},
+                    {"internalType": "string", "name": "symbol", "type": "string"},
+                    {"internalType": "uint256", "name": "decimals", "type": "uint256"},
+                    {"internalType": "uint256", "name": "baseLTVasCollateral", "type": "uint256"},
+                    {"internalType": "uint256", "name": "reserveLiquidationThreshold", "type": "uint256"},
+                    {"internalType": "uint256", "name": "reserveLiquidationBonus", "type": "uint256"},
+                    {"internalType": "uint256", "name": "reserveFactor", "type": "uint256"},
+                    {"internalType": "bool", "name": "usageAsCollateralEnabled", "type": "bool"},
+                    {"internalType": "bool", "name": "borrowingEnabled", "type": "bool"},
+                    {"internalType": "bool", "name": "stableBorrowRateEnabled", "type": "bool"},
+                    {"internalType": "bool", "name": "isActive", "type": "bool"},
+                    {"internalType": "bool", "name": "isFrozen", "type": "bool"},
+                    {"internalType": "bool", "name": "isPaused", "type": "bool"},
+                    {"internalType": "uint128", "name": "liquidityIndex", "type": "uint128"},
+                    {"internalType": "uint128", "name": "variableBorrowIndex", "type": "uint128"},
+                    {"internalType": "uint128", "name": "liquidityRate", "type": "uint128"},
+                    {"internalType": "uint128", "name": "variableBorrowRate", "type": "uint128"},
+                    {"internalType": "uint128", "name": "stableBorrowRate", "type": "uint128"},
+                    {"internalType": "uint40", "name": "lastUpdateTimestamp", "type": "uint40"},
+                    {"internalType": "address", "name": "aTokenAddress", "type": "address"},
+                    {"internalType": "address", "name": "stableDebtTokenAddress", "type": "address"},
+                    {"internalType": "address", "name": "variableDebtTokenAddress", "type": "address"},
+                    {"internalType": "address", "name": "interestRateStrategyAddress", "type": "address"},
+                    {"internalType": "uint256", "name": "availableLiquidity", "type": "uint256"},
+                    {"internalType": "uint256", "name": "totalPrincipalStableDebt", "type": "uint256"},
+                    {"internalType": "uint256", "name": "averageStableRate", "type": "uint256"},
+                    {"internalType": "uint256", "name": "stableDebtLastUpdateTimestamp", "type": "uint256"},
+                    {"internalType": "uint256", "name": "totalScaledVariableDebt", "type": "uint256"},
+                    {"internalType": "uint256", "name": "priceInMarketReferenceCurrency", "type": "uint256"},
+                    {"internalType": "address", "name": "priceOracle", "type": "address"},
+                    {"internalType": "uint256", "name": "variableRateSlope1", "type": "uint256"},
+                    {"internalType": "uint256", "name": "variableRateSlope2", "type": "uint256"},
+                    {"internalType": "uint256", "name": "stableRateSlope1", "type": "uint256"},
+                    {"internalType": "uint256", "name": "stableRateSlope2", "type": "uint256"},
+                    {"internalType": "uint8", "name": "baseStableBorrowRate", "type": "uint8"},
+                    {"internalType": "uint8", "name": "baseVariableBorrowRate", "type": "uint8"},
+                    {"internalType": "uint8", "name": "optimalUsageRatio", "type": "uint8"},
+                    {"internalType": "bool", "name": "isPaused", "type": "bool"}
+                ],
+                "internalType": "struct IUiPoolDataProviderV3.AggregatedReserveData[]",
+                "name": "",
+                "type": "tuple[]"
+            },
+            {"internalType": "uint8", "name": "", "type": "uint8"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
     }
 ]
 
@@ -132,6 +206,13 @@ POOL_ADDRESSES_PROVIDER_ABI = [
     {
         "inputs": [{"internalType": "bytes32", "name": "id", "type": "bytes32"}],
         "name": "getAddress",
+        "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getPool",
         "outputs": [{"internalType": "address", "name": "", "type": "address"}],
         "stateMutability": "view",
         "type": "function"
@@ -155,7 +236,13 @@ PRICE_FEED_ABI = [
     }
 ]
 
-# ABI for Aave Price Oracle, used to get asset prices within the protocol
+# Aave Price Oracle addresses
+PRICE_ORACLE_ADDRESSES = {
+    "base-mainnet": "0x2Cc0Fc26eD4563A5ce5e8bdcfe1A2878676Ae156",
+    "base-sepolia": "0x2Cc0Fc26eD4563A5ce5e8bdcfe1A2878676Ae156",  # Same as mainnet for now, update if different
+}
+
+# Aave Price Oracle ABI
 PRICE_ORACLE_ABI = [
     {
         "inputs": [{"internalType": "address", "name": "asset", "type": "address"}],
@@ -168,6 +255,20 @@ PRICE_ORACLE_ABI = [
         "inputs": [{"internalType": "address[]", "name": "assets", "type": "address[]"}],
         "name": "getAssetsPrices",
         "outputs": [{"internalType": "uint256[]", "name": "", "type": "uint256[]"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "BASE_CURRENCY",
+        "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "BASE_CURRENCY_UNIT",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
         "stateMutability": "view",
         "type": "function"
     }
@@ -210,34 +311,11 @@ AAVE_DATA_PROVIDER_ABI = [
         ],
         "stateMutability": "view",
         "type": "function"
-    },
-    {
-        "inputs": [{"internalType": "address", "name": "user", "type": "address"}],
-        "name": "getUserReserveData",
-        "outputs": [
-            {"internalType": "uint256", "name": "currentATokenBalance", "type": "uint256"},
-            {"internalType": "uint256", "name": "currentStableDebt", "type": "uint256"},
-            {"internalType": "uint256", "name": "currentVariableDebt", "type": "uint256"},
-            {"internalType": "uint256", "name": "principalStableDebt", "type": "uint256"},
-            {"internalType": "uint256", "name": "scaledVariableDebt", "type": "uint256"},
-            {"internalType": "uint256", "name": "stableBorrowRate", "type": "uint256"},
-            {"internalType": "uint256", "name": "liquidityRate", "type": "uint256"},
-            {"internalType": "uint40", "name": "stableRateLastUpdated", "type": "uint40"},
-            {"internalType": "bool", "name": "usageAsCollateralEnabled", "type": "bool"}
-        ],
-        "stateMutability": "view",
-        "type": "function"
     }
 ]
 
-# Addresses for Aave Price Oracle
-PRICE_ORACLE_ADDRESSES = {
-    "base-mainnet": "0x2Cc0Fc26eD4563A5ce5e8bdcfe1A2878676Ae156",  # Base mainnet Aave oracle
-    "base-sepolia": "0x7426EB769D0023cB8F5C09eF0E39F8f6e9f6B6c0",  # Base Sepolia Aave oracle (placeholder)
-}
-
 # Addresses for Aave Data Provider
 DATA_PROVIDER_ADDRESSES = {
-    "base-mainnet": "0x2d8A3C5677189723C4cB8873CfC9C8976FDF38Ac",  # Base mainnet data provider
+    "base-mainnet": "0xC4Fcf9893072d61Cc2899C0054877Cb752587981",  # Base mainnet data provider
     "base-sepolia": "0x9445F13Be4F7Af90B42c8936B69ba604CB240F34",  # Base Sepolia data provider (placeholder)
 }

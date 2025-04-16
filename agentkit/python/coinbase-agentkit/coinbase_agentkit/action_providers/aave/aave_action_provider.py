@@ -20,6 +20,7 @@ from .schemas import (
     AaveBorrowSchema,
     AavePortfolioSchema,
     AaveRepaySchema,
+    AaveSetAsCollateralSchema,
     AaveSupplySchema,
     AaveWithdrawSchema,
 )
@@ -27,12 +28,14 @@ from .utils import (
     approve_token,
     format_amount_from_decimals,
     format_amount_with_decimals,
+    get_asset_price_from_oracle,
     get_health_factor,
     get_portfolio_details_markdown,
     get_token_balance,
     get_token_decimals,
     get_token_symbol,
     get_user_account_data,
+    set_user_use_reserve_as_collateral,
 )
 
 
@@ -239,7 +242,7 @@ Important notes:
                 
                 # Check if the user has active borrows and the health factor could be affected
                 account_data = get_user_account_data(wallet_provider, pool_address)
-                has_borrows = account_data["totalDebtBase"] > 0
+                has_borrows = account_data["totalDebtBaseUnits"] > 0
                 
                 if has_borrows and validated_args.amount == "max":
                     return "Error: You have active borrows. You cannot withdraw all your collateral. Specify an exact amount instead."
@@ -341,29 +344,36 @@ Important notes:
             decimals = get_token_decimals(wallet_provider, asset_address)
             amount_atomic = format_amount_with_decimals(validated_args.amount, decimals)
 
-            # Check if the user has enough collateral to borrow this amount
+            # Check collateral and borrowing capacity
             try:
                 account_data = get_user_account_data(wallet_provider, pool_address)
-                
-                # If user has no collateral, they can't borrow
-                if account_data["totalCollateralBase"] == 0:
+                if account_data["totalCollateralBaseUnits"] == 0:
                     return "Error: You have no collateral supplied. Supply assets as collateral before borrowing."
                     
-                # Check available borrows vs requested amount
-                # This is an estimate as we don't have the exact price feed data
-                token_symbol = get_token_symbol(wallet_provider, asset_address)
-                amount_decimal = Decimal(validated_args.amount)
+                # Get asset price from oracle for accurate USD conversion
+                network = wallet_provider.get_network()
+                network_id = network.network_id
                 
-                # Very rough estimate - proper implementation would use oracle prices
-                if token_symbol == "WETH" or token_symbol == "WSTETH" or token_symbol == "CBETH":
-                    estimated_eth_value = amount_decimal  # Assume 1:1 for ETH-based assets
-                elif token_symbol == "USDC":
-                    estimated_eth_value = amount_decimal / 3000  # Rough ETH/USD rate
-                else:
-                    estimated_eth_value = amount_decimal  # Default fallback
+                try:
+                    # Get asset price from Aave Oracle
+                    asset_price = get_asset_price_from_oracle(wallet_provider, network_id, asset_address)
                     
-                if estimated_eth_value > account_data["availableBorrowsBase"]:
-                    return f"Error: Insufficient borrowing capacity. You can borrow up to {account_data['availableBorrowsBase']:.4f} ETH worth of assets."
+                    # Calculate USD value of borrow amount
+                    amount_decimal = Decimal(validated_args.amount)
+                    # Asset price is already in USD base units (scaled by 10^8)
+                    estimated_borrow_base_units = amount_decimal * asset_price * Decimal(10**(8 - decimals))
+                    
+                    # Compare with available borrows (also in USD base units)
+                    if estimated_borrow_base_units > account_data["availableBorrowsBaseUnits"]:
+                        # Convert to human-readable USD for error message
+                        max_borrow_usd = account_data["availableBorrowsUSD"]
+                        token_symbol = get_token_symbol(wallet_provider, asset_address)
+                        return f"Error: Insufficient borrowing capacity. You can borrow up to ${max_borrow_usd:.4f} worth of assets."
+                except Exception as e:
+                    # Fallback to simpler check if oracle fails
+                    if account_data["availableBorrowsBaseUnits"] == 0:
+                        return "Error: You have no borrowing capacity available."
+                    return f"Error getting asset price: {e}. Please try again."
             except Exception as e:
                 return f"Error checking account data: {e!s}"
 
@@ -578,6 +588,87 @@ A higher health factor indicates lower liquidation risk.
             return get_portfolio_details_markdown(wallet_provider, network.network_id, account)
         except Exception as e:
             return f"Error getting portfolio details from Aave: {e!s}"
+
+    @create_action(
+        name="set_collateral",
+        description="""
+This tool allows setting whether an asset is used as collateral in Aave V3 protocol.
+It takes:
+- asset_id: The asset to set as collateral, one of `weth`, `usdc`, `cbeth`, or `wsteth` (availability depends on network)
+- use_as_collateral: Whether to use the asset as collateral (True) or not (False), defaults to True
+
+Important notes:
+- The asset must already be supplied to Aave
+- Setting an asset as collateral affects your borrowing capacity and liquidation risk
+- This is required to have supplied assets count toward your total collateral value
+""",
+        schema=AaveSetAsCollateralSchema,
+    )
+    def set_collateral(self, wallet_provider: EvmWalletProvider, args: dict[str, Any]) -> str:
+        """Set whether an asset is used as collateral.
+
+        Args:
+            wallet_provider: The wallet to use for the operation.
+            args: The input arguments for the operation.
+
+        Returns:
+            str: A message containing the result of the operation.
+
+        """
+        try:
+            validated_args = AaveSetAsCollateralSchema(**args)
+            network = wallet_provider.get_network()
+            pool_address = self._get_pool_address(network)
+            asset_address = self._get_asset_address(network, validated_args.asset_id)
+
+            # Get current health factor for reference
+            try:
+                current_health = get_health_factor(wallet_provider, pool_address)
+            except Exception:
+                current_health = Decimal("Infinity")  # No previous borrows
+
+            # Execute setUserUseReserveAsCollateral
+            try:
+                tx_hash = set_user_use_reserve_as_collateral(
+                    wallet_provider, pool_address, asset_address, validated_args.use_as_collateral
+                )
+            except Exception as e:
+                return f"Error setting asset as collateral: {e!s}"
+
+            # Get new health factor
+            try:
+                new_health = get_health_factor(wallet_provider, pool_address)
+            except Exception:
+                new_health = current_health  # Fallback
+
+            token_symbol = get_token_symbol(wallet_provider, asset_address)
+
+            # Get account data to see the changes in collateral
+            try:
+                account_data = get_user_account_data(wallet_provider, pool_address)
+                collateral_eth = account_data["totalCollateralBase"]
+                collateral_wei = account_data["totalCollateralWei"]
+            except Exception:
+                collateral_eth = Decimal("0")
+                collateral_wei = 0
+
+            # Format health factor strings and compose the final message
+            if current_health == Decimal("Infinity") and new_health == Decimal("Infinity"):
+                health_message = ""
+            else:
+                health_message = (
+                    f"\nHealth factor changed from {current_health:.2f} to {new_health:.2f}"
+                )
+
+            action = "enabled" if validated_args.use_as_collateral else "disabled"
+            return (
+                f"Successfully {action} {token_symbol} as collateral.\n"
+                f"Transaction hash: {tx_hash}\n"
+                f"Total collateral now: {collateral_eth} ETH ({collateral_wei} Wei)"
+                f"{health_message}"
+            )
+        except Exception as e:
+            return f"Error setting collateral in Aave: {e!s}"
 
 
 def aave_action_provider() -> AaveActionProvider:
