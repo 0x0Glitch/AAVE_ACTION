@@ -1,7 +1,7 @@
 """Aave action provider for interacting with Aave V3 protocol."""
 
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any
 
 from web3 import Web3
 
@@ -9,7 +9,6 @@ from ...network import Network
 from ...wallet_providers import EvmWalletProvider
 from ..action_decorator import create_action
 from ..action_provider import ActionProvider
-from ..erc20.constants import ERC20_ABI
 from .constants import (
     ASSET_ADDRESSES,
     POOL_ABI,
@@ -83,8 +82,8 @@ class AaveActionProvider(ActionProvider[EvmWalletProvider]):
         """
         try:
             return Web3.to_checksum_address(ASSET_ADDRESSES[network.network_id][asset_id])
-        except KeyError:
-            raise ValueError(f"Asset {asset_id} not supported on {network.network_id}")
+        except KeyError as err:
+            raise ValueError(f"Asset {asset_id} not supported on {network.network_id}") from err
 
     @create_action(
         name="supply",
@@ -121,16 +120,16 @@ Important notes:
         try:
             validated_args = AaveSupplySchema(**args)
             network = wallet_provider.get_network()
-            
+
             # Check if the network is supported
             if not self.supports_network(network):
                 return f"Error: Network {network.network_id} is not supported by Aave"
-            
+
             try:
                 pool_address = self._get_pool_address(network)
             except Exception as e:
                 return f"Error: Could not get Aave Pool address for {network.network_id}: {e!s}"
-            
+
             try:
                 asset_address = self._get_asset_address(network, validated_args.asset_id)
             except ValueError as e:
@@ -161,7 +160,7 @@ Important notes:
 
             # Approve Aave to spend tokens
             try:
-                approve_tx_hash = approve_token(
+                _ = approve_token(
                     wallet_provider, asset_address, pool_address, amount_atomic
                 )
             except Exception as e:
@@ -169,7 +168,9 @@ Important notes:
 
             # Supply tokens to Aave
             on_behalf_of = validated_args.on_behalf_of or wallet_provider.get_address()
-            pool_contract = Web3().eth.contract(address=Web3.to_checksum_address(pool_address), abi=POOL_ABI)
+            pool_contract = Web3().eth.contract(
+                address=Web3.to_checksum_address(pool_address), abi=POOL_ABI
+            )
             encoded_data = pool_contract.encode_abi(
                 "supply",
                 args=[
@@ -190,7 +191,10 @@ Important notes:
                 wallet_provider.wait_for_transaction_receipt(tx_hash)
             except Exception as e:
                 error_msg = str(e)
-                if "not deployed" in error_msg.lower() or "call contract function" in error_msg.lower():
+                if (
+                    "not deployed" in error_msg.lower()
+                    or "call contract function" in error_msg.lower()
+                ):
                     return f"Error: Could not supply {validated_args.asset_id} to Aave on {network.network_id}. This token may not be properly supported by Aave on this network."
                 return f"Error executing supply transaction: {e!s}"
 
@@ -262,11 +266,11 @@ Important notes:
             # Get current health factor for reference
             try:
                 current_health = get_health_factor(wallet_provider, pool_address)
-                
+
                 # Check if the user has active borrows and the health factor could be affected
                 account_data = get_user_account_data(wallet_provider, pool_address)
                 has_borrows = account_data["totalDebtBaseUnits"] > 0
-                
+
                 if has_borrows and validated_args.amount == "max":
                     return "Error: You have active borrows. You cannot withdraw all your collateral. Specify an exact amount instead."
             except Exception as e:
@@ -274,7 +278,9 @@ Important notes:
 
             # Execute withdraw from Aave
             to_address = validated_args.to or wallet_provider.get_address()
-            pool_contract = Web3().eth.contract(address=Web3.to_checksum_address(pool_address), abi=POOL_ABI)
+            pool_contract = Web3().eth.contract(
+                address=Web3.to_checksum_address(pool_address), abi=POOL_ABI
+            )
             encoded_data = pool_contract.encode_abi(
                 "withdraw",
                 args=[
@@ -292,10 +298,10 @@ Important notes:
             try:
                 tx_hash = wallet_provider.send_transaction(params)
                 receipt = wallet_provider.wait_for_transaction_receipt(tx_hash)
-                
+
                 # Check if the transaction was successful
                 if receipt.status != 1:
-                    return f"Error: Transaction failed. Your health factor may be at risk if you withdraw this amount."
+                    return "Error: Transaction failed. Your health factor may be at risk if you withdraw this amount."
             except Exception as e:
                 return f"Error executing withdraw transaction: {e!s}"
 
@@ -306,7 +312,9 @@ Important notes:
                 new_health = Decimal("Infinity")  # Fallback
 
             token_symbol = get_token_symbol(wallet_provider, asset_address)
-            amount_display = validated_args.amount if validated_args.amount != "max" else "all available"
+            amount_display = (
+                validated_args.amount if validated_args.amount != "max" else "all available"
+            )
 
             # Format health factor strings and compose the final message
             if current_health == Decimal("Infinity") and new_health == Decimal("Infinity"):
@@ -372,20 +380,24 @@ Important notes:
                 account_data = get_user_account_data(wallet_provider, pool_address)
                 if account_data["totalCollateralBaseUnits"] == 0:
                     return "Error: You have no collateral supplied. Supply assets as collateral before borrowing."
-                    
+
                 # Get asset price from oracle for accurate USD conversion
                 network = wallet_provider.get_network()
                 network_id = network.network_id
-                
+
                 try:
                     # Get asset price from Aave Oracle
-                    asset_price = get_asset_price_from_oracle(wallet_provider, network_id, asset_address)
-                    
+                    asset_price = get_asset_price_from_oracle(
+                        wallet_provider, network_id, asset_address
+                    )
+
                     # Calculate USD value of borrow amount
                     amount_decimal = Decimal(validated_args.amount)
                     # Asset price is already in USD base units (scaled by 10^8)
-                    estimated_borrow_base_units = amount_decimal * asset_price * Decimal(10**(8 - decimals))
-                    
+                    estimated_borrow_base_units = (
+                        amount_decimal * asset_price * Decimal(10 ** (8 - decimals))
+                    )
+
                     # Compare with available borrows (also in USD base units)
                     if estimated_borrow_base_units > account_data["availableBorrowsBaseUnits"]:
                         # Convert to human-readable USD for error message
@@ -405,7 +417,9 @@ Important notes:
 
             # Execute borrow from Aave
             on_behalf_of = validated_args.on_behalf_of or wallet_provider.get_address()
-            pool_contract = Web3().eth.contract(address=Web3.to_checksum_address(pool_address), abi=POOL_ABI)
+            pool_contract = Web3().eth.contract(
+                address=Web3.to_checksum_address(pool_address), abi=POOL_ABI
+            )
             encoded_data = pool_contract.encode_abi(
                 "borrow",
                 args=[
@@ -425,10 +439,10 @@ Important notes:
             try:
                 tx_hash = wallet_provider.send_transaction(params)
                 receipt = wallet_provider.wait_for_transaction_receipt(tx_hash)
-                
+
                 # Check if the transaction was successful
                 if receipt.status != 1:
-                    return f"Error: Transaction failed. The borrow may exceed your available borrowing capacity."
+                    return "Error: Transaction failed. The borrow may exceed your available borrowing capacity."
             except Exception as e:
                 return f"Error executing borrow transaction: {e!s}"
 
@@ -513,7 +527,7 @@ Important notes:
 
             # Approve Aave to spend tokens (not needed for max amount, but safer to approve anyway)
             try:
-                approve_tx_hash = approve_token(
+                _ = approve_token(
                     wallet_provider, asset_address, pool_address, amount_atomic
                 )
             except Exception as e:
@@ -521,7 +535,9 @@ Important notes:
 
             # Execute repay to Aave
             on_behalf_of = validated_args.on_behalf_of or wallet_provider.get_address()
-            pool_contract = Web3().eth.contract(address=Web3.to_checksum_address(pool_address), abi=POOL_ABI)
+            pool_contract = Web3().eth.contract(
+                address=Web3.to_checksum_address(pool_address), abi=POOL_ABI
+            )
             encoded_data = pool_contract.encode_abi(
                 "repay",
                 args=[
@@ -540,10 +556,10 @@ Important notes:
             try:
                 tx_hash = wallet_provider.send_transaction(params)
                 receipt = wallet_provider.wait_for_transaction_receipt(tx_hash)
-                
+
                 # Check if the transaction was successful
                 if receipt.status != 1:
-                    return f"Error: Transaction failed. You may not have borrowed this asset with the specified interest rate mode."
+                    return "Error: Transaction failed. You may not have borrowed this asset with the specified interest rate mode."
             except Exception as e:
                 return f"Error executing repay transaction: {e!s}"
 
@@ -554,7 +570,9 @@ Important notes:
                 new_health = current_health  # Fallback
 
             token_symbol = get_token_symbol(wallet_provider, asset_address)
-            amount_display = validated_args.amount if validated_args.amount != "max" else "all outstanding"
+            amount_display = (
+                validated_args.amount if validated_args.amount != "max" else "all outstanding"
+            )
             interest_mode = "variable" if validated_args.interest_rate_mode == 2 else "stable"
 
             # Format health factor strings and compose the final message
@@ -607,7 +625,7 @@ A higher health factor indicates lower liquidation risk.
             validated_args = AavePortfolioSchema(**args)
             network = wallet_provider.get_network()
             account = validated_args.account or wallet_provider.get_address()
-            
+
             return get_portfolio_details_markdown(wallet_provider, network.network_id, account)
         except Exception as e:
             return f"Error getting portfolio details from Aave: {e!s}"
@@ -695,7 +713,7 @@ Important notes:
 
 
 def aave_action_provider() -> AaveActionProvider:
-    """Created a new AaveActionProvider instance.
+    """Create a new AaveActionProvider instance.
 
     Returns:
         AaveActionProvider: A new instance of the Aave action provider.
