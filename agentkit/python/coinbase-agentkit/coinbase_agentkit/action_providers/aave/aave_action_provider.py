@@ -121,17 +121,37 @@ Important notes:
         try:
             validated_args = AaveSupplySchema(**args)
             network = wallet_provider.get_network()
-            pool_address = self._get_pool_address(network)
-            asset_address = self._get_asset_address(network, validated_args.asset_id)
+            
+            # Check if the network is supported
+            if not self.supports_network(network):
+                return f"Error: Network {network.network_id} is not supported by Aave"
+            
+            try:
+                pool_address = self._get_pool_address(network)
+            except Exception as e:
+                return f"Error: Could not get Aave Pool address for {network.network_id}: {e!s}"
+            
+            try:
+                asset_address = self._get_asset_address(network, validated_args.asset_id)
+            except ValueError as e:
+                return f"Error: {e!s}"
+            except Exception as e:
+                return f"Error: Could not get asset address for {validated_args.asset_id} on {network.network_id}: {e!s}"
 
-            decimals = get_token_decimals(wallet_provider, asset_address)
-            amount_atomic = format_amount_with_decimals(validated_args.amount, decimals)
+            try:
+                decimals = get_token_decimals(wallet_provider, asset_address)
+                amount_atomic = format_amount_with_decimals(validated_args.amount, decimals)
+            except Exception as e:
+                return f"Error: Could not get token information for {validated_args.asset_id} on {network.network_id}. The token contract may not be properly deployed or accessible: {e!s}"
 
             # Check wallet balance before proceeding
-            wallet_balance = get_token_balance(wallet_provider, asset_address)
-            if wallet_balance < amount_atomic:
-                human_balance = format_amount_from_decimals(wallet_balance, decimals)
-                return f"Error: Insufficient balance. You have {human_balance} {validated_args.asset_id}, but trying to supply {validated_args.amount}"
+            try:
+                wallet_balance = get_token_balance(wallet_provider, asset_address)
+                if wallet_balance < amount_atomic:
+                    human_balance = format_amount_from_decimals(wallet_balance, decimals)
+                    return f"Error: Insufficient balance. You have {human_balance} {validated_args.asset_id}, but trying to supply {validated_args.amount}"
+            except Exception as e:
+                return f"Error: Could not check balance for {validated_args.asset_id} on {network.network_id}. The token contract may not be properly deployed or accessible: {e!s}"
 
             # Get current health factor for reference
             try:
@@ -145,7 +165,7 @@ Important notes:
                     wallet_provider, asset_address, pool_address, amount_atomic
                 )
             except Exception as e:
-                return f"Error approving token: {e!s}"
+                return f"Error approving token for Aave: {e!s}"
 
             # Supply tokens to Aave
             on_behalf_of = validated_args.on_behalf_of or wallet_provider.get_address()
@@ -169,6 +189,9 @@ Important notes:
                 tx_hash = wallet_provider.send_transaction(params)
                 wallet_provider.wait_for_transaction_receipt(tx_hash)
             except Exception as e:
+                error_msg = str(e)
+                if "not deployed" in error_msg.lower() or "call contract function" in error_msg.lower():
+                    return f"Error: Could not supply {validated_args.asset_id} to Aave on {network.network_id}. This token may not be properly supported by Aave on this network."
                 return f"Error executing supply transaction: {e!s}"
 
             # Get new health factor
@@ -672,7 +695,7 @@ Important notes:
 
 
 def aave_action_provider() -> AaveActionProvider:
-    """Create a new AaveActionProvider instance.
+    """Created a new AaveActionProvider instance.
 
     Returns:
         AaveActionProvider: A new instance of the Aave action provider.

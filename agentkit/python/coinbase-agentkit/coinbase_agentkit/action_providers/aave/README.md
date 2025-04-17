@@ -1,136 +1,155 @@
-# Aave Action Provider
-
-This module provides actions to interact with the Aave V3 protocol on Base mainnet and Base Sepolia testnet for lending and borrowing operations.
+# Aave Action Provider for Coinbase AgentKit
 
 ## Overview
 
-The Aave Action Provider enables AI agents to interact with the Aave V3 protocol on the Base network, allowing for operations such as:
+This repository contains an implementation of an Aave Action Provider for the Coinbase AgentKit framework. The Aave Action Provider enables AI agents to interact with the Aave V3 protocol on Base mainnet, providing functionality for lending, borrowing, and managing positions.
 
-- Supply assets as collateral
-- Withdraw supplied assets
-- Borrow assets against collateral
-- Repay borrowed assets
-- Retrieve portfolio details
+## Features
 
-## Supported Networks
+The Aave Action Provider supports the following actions:
 
-- Base Mainnet
-- Base Sepolia (testnet)
+- **Supply**: Deposit assets to Aave as collateral
+- **Withdraw**: Withdraw supplied assets from Aave
+- **Borrow**: Borrow assets against supplied collateral
+- **Repay**: Repay borrowed assets
+- **Get Portfolio**: Retrieve user portfolio details from Aave
 
-## Supported Assets
+## File Structure
 
-**Base Mainnet:**
-- WETH (wrapped ETH)
-- USDC
-- cbETH (Coinbase ETH)
-- wstETH (wrapped staked ETH)
-
-**Base Sepolia:**
-- WETH
-- USDC
-
-## Actions
-
-### supply
-
-Supply assets to Aave as collateral for borrowing or earning interest.
-
-**Parameters:**
-- `asset_id`: The asset to supply (e.g., `weth`, `usdc`, `cbeth`, `wsteth`)
-- `amount`: The amount of tokens to supply in human-readable format (e.g., `0.1`)
-- `on_behalf_of`: (Optional) The address to supply on behalf of
-- `referral_code`: (Optional) Referral code, default is 0
-
-### withdraw
-
-Withdraw previously supplied assets from Aave.
-
-**Parameters:**
-- `asset_id`: The asset to withdraw (e.g., `weth`, `usdc`, `cbeth`, `wsteth`)
-- `amount`: The amount to withdraw or `max` to withdraw all
-- `to`: (Optional) The address to withdraw to
-
-### borrow
-
-Borrow assets from Aave against your supplied collateral.
-
-**Parameters:**
-- `asset_id`: The asset to borrow (e.g., `weth`, `usdc`, `cbeth`, `wsteth`)
-- `amount`: The amount to borrow
-- `interest_rate_mode`: (Optional) Interest rate mode: 1 for stable, 2 for variable (default)
-- `on_behalf_of`: (Optional) The address to borrow on behalf of
-- `referral_code`: (Optional) Referral code
-
-### repay
-
-Repay borrowed assets to Aave.
-
-**Parameters:**
-- `asset_id`: The asset to repay (e.g., `weth`, `usdc`, `cbeth`, `wsteth`)
-- `amount`: The amount to repay or `max` to repay all
-- `interest_rate_mode`: (Optional) Interest rate mode: 1 for stable, 2 for variable (default)
-- `on_behalf_of`: (Optional) The address to repay debt for
-
-### get_portfolio
-
-Retrieve portfolio details from Aave including supplied collateral, borrowed assets, and health factor.
-
-**Parameters:**
-- `account`: (Optional) The address to get portfolio details for
-
-## Example Usage
-
-```python
-from coinbase_agentkit.wallet_providers import EvmWalletProvider
-from coinbase_agentkit.action_providers.aave import aave_action_provider
-
-# Initialize wallet provider
-wallet = EvmWalletProvider(...)
-
-# Initialize Aave action provider
-provider = aave_action_provider()
-
-# Supply 0.1 WETH
-result = provider.supply(wallet, {
-    "asset_id": "weth",
-    "amount": "0.1"
-})
-print(result)
-
-# Borrow 50 USDC
-result = provider.borrow(wallet, {
-    "asset_id": "usdc",
-    "amount": "50",
-    "interest_rate_mode": 2  # Variable rate
-})
-print(result)
-
-# Get portfolio details
-result = provider.get_portfolio(wallet, {})
-print(result)
+```
+python/coinbase-agentkit/coinbase_agentkit/action_providers/aave/
+├── __init__.py              # Package initialization
+├── aave_action_provider.py  # Main action provider implementation
+├── constants.py             # Contract addresses and ABIs
+├── schemas.py               # Input validation schemas
+└── utils.py                 # Utility functions for Aave interactions
 ```
 
 ## Implementation Details
 
-- The provider interacts with Aave V3 contracts directly using Web3.py.
-- Token approvals are handled automatically before supply and repay actions.
-- Health factor checks ensure borrowing and withdrawal operations maintain a safe position.
-- Portfolio details include total collateral, total debt, available borrowing capacity, and health factor.
+### Action Provider
 
-## Network Support
+The `AaveActionProvider` class in `aave_action_provider.py` implements the core functionality for interacting with the Aave protocol. It inherits from the base `ActionProvider` class and leverages the `create_action` decorator to define actions.
 
-The provider supports networks where Aave V3 is deployed, with address mappings for Base mainnet and Base Sepolia.
+### Schemas
 
-## Error Handling
+Input validation is handled through Pydantic schemas defined in `schemas.py`, ensuring that all inputs to actions are properly validated before execution:
 
-The provider implements robust error checking for:
-- Insufficient token balances
-- Insufficient collateral for borrowing
-- Risk of liquidation when withdrawing collateral
-- Invalid input parameters
+- `AaveSupplySchema` - For supply actions
+- `AaveWithdrawSchema` - For withdraw actions
+- `AaveBorrowSchema` - For borrow actions
+- `AaveRepaySchema` - For repay actions
+- `AavePortfolioSchema` - For portfolio retrieval
 
-## Notes
+### Constants
 
-- Health factor should be maintained above 1.0 to avoid liquidation.
-- Variable interest rates (mode 2) are recommended for most users.
-- Some assets may only support variable rate borrowing.
+The `constants.py` file contains essential contract addresses and ABIs required for interacting with Aave, including:
+
+- `POOL_ADDRESSES` - Addresses of the Aave Pool contract across networks
+- `ASSET_ADDRESSES` - Addresses of supported assets (WETH, USDC, etc.)
+- `POOL_ABI` - ABI for the Aave Pool contract
+- `PRICE_FEED_ABI` - ABI for Chainlink price feeds
+- `UI_POOL_DATA_PROVIDER_ABI` - ABI for retrieving user data
+
+### Utilities
+
+The `utils.py` file contains helper functions for:
+
+- Token decimals and symbol retrieval
+- Balance checking
+- Amount formatting
+- Token approvals
+- Health factor calculations
+- Portfolio data formatting
+
+## Key Considerations
+
+### Security
+
+- All addresses are converted to checksum format using `Web3.to_checksum_address()` to ensure secure interactions with Ethereum contracts
+- Token approvals are implemented before supply/repay operations
+- Health factor calculations help prevent liquidation risks
+
+### Integration with Chatbot
+
+The action provider is integrated into the langchain-cdp-chatbot example by adding it to the action providers list in `chatbot.py`:
+
+```python
+from coinbase_agentkit.action_providers import (
+    aave_action_provider,
+    # other providers
+)
+
+# In the generate_agent function
+action_providers = [
+    aave_action_provider(),
+    # other providers
+]
+```
+
+## Usage Examples
+
+### Supply Assets
+
+```
+Supply 0.1 WETH to Aave
+```
+
+### View Portfolio
+
+```
+Show my Aave portfolio
+```
+
+### Borrow Assets
+
+```
+Borrow 100 USDC from Aave at a variable interest rate
+```
+
+### Withdraw Assets
+
+```
+Withdraw 0.05 WETH from Aave
+```
+
+### Repay Debt
+
+```
+Repay 50 USDC to Aave
+```
+
+## Environment Setup
+
+1. Ensure all required environment variables are set in `.env.local`:
+   - `CDP_API_KEY_NAME`
+   - `CDP_API_KEY_PRIVATE_KEY`
+   - `OPENAI_API_KEY`
+   - `NETWORK_ID` (set to `base-mainnet` for this implementation)
+
+2. Install dependencies:
+   ```bash
+   make install
+   ```
+
+3. Run the chatbot:
+   ```bash
+   make run
+   ```
+
+## Troubleshooting
+
+If you encounter issues with address format errors, ensure that all addresses are properly checksummed using `Web3.to_checksum_address()` before passing them to Web3.py functions.
+
+## Future Improvements
+
+- Add support for more assets and networks
+- Implement debt switching functionality
+- Add support for eMode and efficiency mode
+- Implement isolation mode support
+- Add liquidation risk warnings
+
+## License
+
+This project is licensed under the terms of the Apache License 2.0.
+<!--  -->
