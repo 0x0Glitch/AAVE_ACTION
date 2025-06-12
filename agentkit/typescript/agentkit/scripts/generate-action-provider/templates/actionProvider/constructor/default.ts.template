@@ -1,6 +1,0 @@
-/**
- * Constructor for the {{name_pascal}}ActionProvider.
- */
-constructor() {
-  super("{{name}}", []);
-}

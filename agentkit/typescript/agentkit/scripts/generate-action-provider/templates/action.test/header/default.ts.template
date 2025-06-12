@@ -1,2 +1,0 @@
-import { {{name_pascal}}ActionProvider } from "./{{name}}ActionProvider";
-import { ExampleActionSchema } from "./schemas";
